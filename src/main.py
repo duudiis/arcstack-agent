@@ -1,8 +1,11 @@
 import asyncio
+import json
 import logging
 import os
+from urllib.parse import urlencode, urlparse
 
-import socketio
+import websockets
+import websockets.exceptions
 
 from .config import settings
 from .dispatcher import dispatch_tool
@@ -14,83 +17,103 @@ logging.basicConfig(
 )
 logger = logging.getLogger("arcstack-agent")
 
-sio = socketio.AsyncClient(
-    reconnection=True,
-    reconnection_attempts=0,
-    reconnection_delay=1,
-    reconnection_delay_max=30,
-)
 
-arc_id: str | None = None
-
-
-@sio.event(namespace="/agent")
-async def connect():
-    logger.info("Connected to backend")
-    await sio.emit(
-        "agent:register",
-        {
-            "arcId": settings.agent_token[:8] + "...",
-            "capabilities": list(
-                ["shell", "file_read", "file_write", "file_list", "system_info", "process_list", "process_kill"]
-            ),
-        },
-        namespace="/agent",
-    )
+def get_ws_url() -> str:
+    parsed = urlparse(settings.ws_url)
+    scheme = "wss" if parsed.scheme == "https" else "ws"
+    host = parsed.hostname or "localhost"
+    port = parsed.port or (443 if scheme == "wss" else 80)
+    params = urlencode({"token": settings.agent_token})
+    return f"{scheme}://{host}:{port}/ws/agent?{params}"
 
 
-@sio.event(namespace="/agent")
-async def disconnect():
-    logger.warning("Disconnected from backend")
+async def send_msg(ws, msg_type: str, data: dict | None = None):
+    payload = {"type": msg_type, **(data or {})}
+    await ws.send(json.dumps(payload))
 
 
-@sio.on("tool:execute", namespace="/agent")
-async def handle_tool_execute(data: dict):
-    logger.info(f"Executing tool: {data.get('tool')} (request={data.get('requestId')})")
-    result = await dispatch_tool(data["tool"], data.get("params", {}))
-    result["arcId"] = data["arcId"]
-    result["requestId"] = data["requestId"]
-    await sio.emit("tool:result", result, namespace="/agent")
-
-
-async def heartbeat_loop():
+async def heartbeat_loop(ws):
     while True:
         try:
-            if sio.connected:
-                await sio.emit("agent:heartbeat", namespace="/agent")
+            await send_msg(ws, "agent:heartbeat")
         except Exception as e:
             logger.error(f"Heartbeat error: {e}")
+            break
         await asyncio.sleep(settings.heartbeat_interval)
 
 
-async def metrics_loop():
+async def metrics_loop(ws, arc_id: str):
     while True:
         try:
-            if sio.connected:
-                metrics = SystemInfoTool.get_metrics()
-                metrics["arcId"] = arc_id or ""
-                await sio.emit("agent:metrics", metrics, namespace="/agent")
+            metrics = SystemInfoTool.get_metrics()
+            metrics["arcId"] = arc_id
+            await send_msg(ws, "agent:metrics", metrics)
         except Exception as e:
             logger.error(f"Metrics error: {e}")
+            break
         await asyncio.sleep(10)
+
+
+async def handle_messages(ws):
+    async for raw in ws:
+        try:
+            msg = json.loads(raw)
+            msg_type = msg.get("type")
+
+            if msg_type == "tool:execute":
+                logger.info(f"Executing tool: {msg.get('tool')} (request={msg.get('requestId')})")
+                result = await dispatch_tool(msg["tool"], msg.get("params", {}))
+                result["arcId"] = msg["arcId"]
+                result["requestId"] = msg["requestId"]
+                await send_msg(ws, "tool:result", result)
+            else:
+                logger.debug(f"Unknown message type: {msg_type}")
+        except json.JSONDecodeError:
+            logger.warning("Received non-JSON message")
+        except Exception as e:
+            logger.error(f"Message handling error: {e}")
+
+
+async def connect_and_run():
+    ws_url = get_ws_url()
+    logger.info(f"Connecting to {settings.ws_url}/ws/agent")
+
+    async with websockets.connect(ws_url) as ws:
+        logger.info("Connected to backend")
+
+        arc_id = settings.agent_token[:8]
+
+        heartbeat_task = asyncio.create_task(heartbeat_loop(ws))
+        metrics_task = asyncio.create_task(metrics_loop(ws, arc_id))
+
+        try:
+            await handle_messages(ws)
+        finally:
+            heartbeat_task.cancel()
+            metrics_task.cancel()
 
 
 async def main():
     os.makedirs(settings.workspace_dir, exist_ok=True)
-
-    logger.info(f"ArcStack Agent starting, connecting to {settings.ws_url}")
+    logger.info(f"ArcStack Agent starting")
     logger.info(f"Workspace: {settings.workspace_dir}")
 
-    asyncio.create_task(heartbeat_loop())
-    asyncio.create_task(metrics_loop())
+    reconnect_delay = 1
+    max_delay = 30
 
-    await sio.connect(
-        settings.ws_url,
-        namespaces=["/agent"],
-        auth={"token": settings.agent_token},
-    )
+    while True:
+        try:
+            await connect_and_run()
+        except websockets.exceptions.ConnectionClosedError as e:
+            logger.warning(f"Connection closed: {e}")
+        except ConnectionRefusedError:
+            logger.warning("Connection refused")
+        except Exception as e:
+            logger.error(f"Connection error: {e}")
 
-    await sio.wait()
+        logger.info(f"Reconnecting in {reconnect_delay}s...")
+        await asyncio.sleep(reconnect_delay)
+        reconnect_delay = min(reconnect_delay * 2, max_delay)
 
 
 def run():
