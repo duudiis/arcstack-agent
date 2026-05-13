@@ -1,0 +1,52 @@
+ALLOWED_COMMANDS = {
+    "ls", "cat", "head", "tail", "grep", "find", "wc", "echo",
+    "mkdir", "touch", "cp", "mv", "rm",
+    "python3", "python", "pip", "pip3",
+    "node", "npm", "npx",
+    "git",
+    "curl", "wget",
+    "ps", "top", "htop",
+    "df", "du", "free",
+    "uname", "whoami", "date", "which", "env", "printenv",
+    "tar", "gzip", "gunzip", "zip", "unzip",
+    "chmod", "chown",
+    "sort", "uniq", "cut", "awk", "sed", "tr",
+    "ping", "host", "dig",
+}
+
+BLOCKED_PATTERNS = [
+    "sudo ",
+    "rm -rf /",
+    "rm -rf /*",
+    "chmod 777 /",
+    "dd if=",
+    "mkfs",
+    "> /dev/",
+    "nc ",
+    "ncat ",
+    "socat ",
+    "telnet ",
+    "/etc/shadow",
+    "/etc/passwd",
+    "eval(",
+    "exec(",
+    ":(){",  # fork bomb
+    "shutdown",
+    "reboot",
+    "halt",
+    "init ",
+    "systemctl",
+    "service ",
+]
+
+BLOCKED_PATH_PREFIXES = [
+    "/etc",
+    "/root",
+    "/var/log",
+    "/proc",
+    "/sys",
+    "/boot",
+    "/dev",
+    "/sbin",
+    "/usr/sbin",
+]
