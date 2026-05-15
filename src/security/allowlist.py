@@ -12,10 +12,15 @@ ALLOWED_COMMANDS = {
     "chmod", "chown",
     "sort", "uniq", "cut", "awk", "sed", "tr",
     "ping", "host", "dig",
+    "sudo",
+    "apt", "apt-get", "dpkg",
+    "systemctl", "service",
+    "journalctl",
+    "docker",
+    "ip", "ss", "netstat", "iptables",
 }
 
 BLOCKED_PATTERNS = [
-    "sudo ",
     "rm -rf /",
     "rm -rf /*",
     "chmod 777 /",
@@ -27,26 +32,19 @@ BLOCKED_PATTERNS = [
     "socat ",
     "telnet ",
     "/etc/shadow",
-    "/etc/passwd",
     "eval(",
     "exec(",
     ":(){",  # fork bomb
     "shutdown",
     "reboot",
     "halt",
-    "init ",
-    "systemctl",
-    "service ",
+    "init 0",
+    "init 6",
 ]
 
 BLOCKED_PATH_PREFIXES = [
-    "/etc",
-    "/root",
-    "/var/log",
-    "/proc",
-    "/sys",
+    "/proc/kcore",
+    "/dev/mem",
+    "/dev/kmem",
     "/boot",
-    "/dev",
-    "/sbin",
-    "/usr/sbin",
 ]

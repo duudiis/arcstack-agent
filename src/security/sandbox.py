@@ -29,6 +29,16 @@ def validate_command(command: str) -> None:
             f"Command '{base_cmd}' is not allowed. Allowed: {', '.join(sorted(ALLOWED_COMMANDS))}"
         )
 
+    # When using sudo, also validate the inner command
+    if base_cmd == "sudo":
+        inner = [p for p in parts[1:] if not p.startswith("-")]
+        if inner:
+            inner_cmd = os.path.basename(inner[0])
+            if inner_cmd not in ALLOWED_COMMANDS:
+                raise SecurityError(
+                    f"Command '{inner_cmd}' (via sudo) is not allowed. Allowed: {', '.join(sorted(ALLOWED_COMMANDS))}"
+                )
+
 
 def validate_path(path: str) -> str:
     workspace = Path(settings.workspace_dir).resolve()
