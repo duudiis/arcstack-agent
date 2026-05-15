@@ -20,11 +20,13 @@ logger = logging.getLogger("arcstack-agent")
 
 def get_ws_url() -> str:
     parsed = urlparse(settings.ws_url)
-    scheme = "wss" if parsed.scheme == "https" else "ws"
+    scheme = "wss" if parsed.scheme in ("https", "wss") else "ws"
     host = parsed.hostname or "localhost"
-    port = parsed.port or (443 if scheme == "wss" else 80)
+    port = parsed.port
     params = urlencode({"token": settings.agent_token})
-    return f"{scheme}://{host}:{port}/ws/agent?{params}"
+    if port:
+        return f"{scheme}://{host}:{port}/ws/agent?{params}"
+    return f"{scheme}://{host}/ws/agent?{params}"
 
 
 async def send_msg(ws, msg_type: str, data: dict | None = None):
