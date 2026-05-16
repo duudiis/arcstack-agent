@@ -21,8 +21,8 @@ class ShellTool(BaseTool):
             return ToolResult(success=False, output="", error=str(e))
 
         try:
-            proc = await asyncio.create_subprocess_shell(
-                command,
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/bash", "-c", command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=settings.workspace_dir,

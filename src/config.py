@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     workspace_dir: str = "/home/arcagent/workspace"
     log_level: str = "INFO"
     heartbeat_interval: int = 30
-    command_timeout: int = 30
+    command_timeout: int = 120
     max_output_size: int = 65536
 
     class Config:
