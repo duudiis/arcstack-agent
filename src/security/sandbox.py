@@ -1,4 +1,5 @@
 import os
+import re
 import shlex
 from pathlib import Path
 
@@ -10,18 +11,9 @@ class SecurityError(Exception):
     pass
 
 
-def validate_command(command: str) -> None:
-    for pattern in BLOCKED_PATTERNS:
-        if pattern in command:
-            raise SecurityError(f"Blocked command pattern: {pattern.strip()}")
-
-    try:
-        parts = shlex.split(command)
-    except ValueError:
-        raise SecurityError("Invalid command syntax")
-
+def _validate_simple_command(parts: list[str]) -> None:
     if not parts:
-        raise SecurityError("Empty command")
+        return
 
     base_cmd = os.path.basename(parts[0])
     if base_cmd not in ALLOWED_COMMANDS:
@@ -29,7 +21,6 @@ def validate_command(command: str) -> None:
             f"Command '{base_cmd}' is not allowed. Allowed: {', '.join(sorted(ALLOWED_COMMANDS))}"
         )
 
-    # When using sudo, also validate the inner command
     if base_cmd == "sudo":
         inner = [p for p in parts[1:] if not p.startswith("-")]
         if inner:
@@ -38,6 +29,25 @@ def validate_command(command: str) -> None:
                 raise SecurityError(
                     f"Command '{inner_cmd}' (via sudo) is not allowed. Allowed: {', '.join(sorted(ALLOWED_COMMANDS))}"
                 )
+
+
+def validate_command(command: str) -> None:
+    for pattern in BLOCKED_PATTERNS:
+        if pattern in command:
+            raise SecurityError(f"Blocked command pattern: {pattern.strip()}")
+
+    # Split on shell operators to validate each segment
+    segments = re.split(r'\s*(?:\|\||&&|[|;])\s*', command)
+
+    for segment in segments:
+        segment = segment.strip()
+        if not segment:
+            continue
+        try:
+            parts = shlex.split(segment)
+        except ValueError:
+            raise SecurityError("Invalid command syntax")
+        _validate_simple_command(parts)
 
 
 def validate_path(path: str) -> str:
